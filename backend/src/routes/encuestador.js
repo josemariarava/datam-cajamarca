@@ -1,10 +1,11 @@
 import { Router } from 'express'
 import { supabaseAdmin } from '../config/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
+import { generalLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
 
-router.use(requireAuth)
+router.use(generalLimiter, requireAuth)
 
 // Dashboard del encuestador
 router.get('/dashboard', async (req, res) => {

@@ -1,16 +1,10 @@
 import { Router } from 'express'
-import rateLimit from 'express-rate-limit'
 import { supabaseAdmin } from '../config/supabase.js'
 import { consultarDNI } from '../services/dni.js'
 import { requireAuth } from '../middleware/auth.js'
+import { authLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Demasiadas solicitudes. Intenta de nuevo en 15 minutos.' },
-})
 
 router.post('/register', authLimiter, async (req, res) => {
   try {

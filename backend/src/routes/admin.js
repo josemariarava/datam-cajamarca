@@ -3,10 +3,11 @@ import { supabaseAdmin } from '../config/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
 import { requireAdmin } from '../middleware/admin.js'
 import { consultarDNI } from '../services/dni.js'
+import { generalLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
 
-router.use(requireAuth, requireAdmin)
+router.use(generalLimiter, requireAuth, requireAdmin)
 
 // Estadísticas globales
 router.get('/stats', async (req, res) => {
@@ -33,17 +34,26 @@ router.get('/stats', async (req, res) => {
 
 // Gestión de encuestadores
 router.get('/encuestadores', async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1)
+  const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page) || 20))
+  const from = (page - 1) * perPage
+  const to = from + perPage - 1
+
+  const { count: total } = await supabaseAdmin
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .select('id, dni, nombres, apellido_paterno, apellido_materno, telefono, role, is_active, created_at')
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (error) return res.status(400).json({ error: error.message })
 
-  // Agregar conteo de votos por encuestador
   const { data: votesData } = await supabaseAdmin
     .from('votes')
-    .select('registered_by, count')
+    .select('registered_by')
 
   const voteCounts = {}
   for (const v of votesData || []) {
@@ -55,7 +65,7 @@ router.get('/encuestadores', async (req, res) => {
     total_votos_registrados: voteCounts[p.id] || 0,
   }))
 
-  res.json(result)
+  res.json({ data: result, total, page, per_page: perPage })
 })
 
 router.post('/encuestadores', async (req, res) => {
@@ -136,6 +146,16 @@ router.put('/encuestadores/:id/toggle-active', async (req, res) => {
 
 // Datos para mapa GPS
 router.get('/map-data', async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1)
+  const perPage = Math.min(500, Math.max(1, parseInt(req.query.per_page) || 200))
+  const from = (page - 1) * perPage
+  const to = from + perPage - 1
+
+  const { count: total } = await supabaseAdmin
+    .from('votes')
+    .select('*', { count: 'exact', head: true })
+    .not('location_lat', 'is', null)
+
   const { data, error } = await supabaseAdmin
     .from('votes')
     .select(`
@@ -145,9 +165,10 @@ router.get('/map-data', async (req, res) => {
     `)
     .not('location_lat', 'is', null)
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (error) return res.status(400).json({ error: error.message })
-  res.json(data)
+  res.json({ data, total, page, per_page: perPage })
 })
 
 // Exportar datos

@@ -36,6 +36,7 @@ function NavBar() {
         )}
       </div>
       <div className="flex items-center gap-2">
+        <InstallPrompt />
         <Text size={100} className="hidden md:block">{profile?.nombres || user.email}</Text>
         <Button size="small" appearance="subtle" onClick={signOut}>Salir</Button>
       </div>
@@ -78,13 +79,56 @@ function AppRoutes() {
   )
 }
 
+function SkipLink() {
+  return (
+    <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:bg-white focus:text-blue-600 focus:px-4 focus:py-2 focus:rounded focus:shadow-lg">
+      Saltar al contenido principal
+    </a>
+  )
+}
+
+function InstallPrompt() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    if (outcome === 'accepted') setDeferredPrompt(null)
+  }
+
+  useEffect(() => {
+    if ('storage' in navigator && 'persist' in navigator.storage) {
+      navigator.storage.persist()
+    }
+  }, [])
+
+  if (!deferredPrompt) return null
+
+  return (
+    <Button size="small" appearance="subtle" onClick={handleInstall} className="text-xs">
+      📲 Instalar app
+    </Button>
+  )
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
+        <SkipLink />
         <div className="min-h-screen bg-gray-50">
           <NavBar />
-          <main>
+          <main id="main-content">
             <AppRoutes />
           </main>
         </div>

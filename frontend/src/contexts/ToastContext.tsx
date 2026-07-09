@@ -44,7 +44,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+      <div aria-live="polite" aria-label="Notificaciones" className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
         <AnimatePresence>
           {toasts.map(t => (
             <motion.div
@@ -53,9 +53,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 100, scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              role="alert"
               className={`${colors[t.type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 pointer-events-auto max-w-sm`}
             >
-              <span>{icons[t.type]}</span>
+              <span aria-hidden="true">{icons[t.type]}</span>
               <span className="text-white text-sm">{t.message}</span>
             </motion.div>
           ))}

@@ -103,11 +103,14 @@ export const adminApi = {
     total_votos: number; total_candidatos: number; participacion_pct: string;
   }>('/admin/stats'),
 
-  getEncuestadores: () => request<{
-    id: string; dni: string; nombres: string; apellido_paterno: string;
-    apellido_materno: string; role: string; is_active: boolean;
-    total_votos_registrados: number; created_at: string;
-  }[]>('/admin/encuestadores'),
+  getEncuestadores: (page = 1) => request<{
+    data: {
+      id: string; dni: string; nombres: string; apellido_paterno: string;
+      apellido_materno: string; role: string; is_active: boolean;
+      total_votos_registrados: number; created_at: string;
+    }[];
+    total: number; page: number; per_page: number;
+  }>(`/admin/encuestadores?page=${page}`),
 
   createEncuestador: (body: { email: string; password: string; dni: string }) =>
     request('/admin/encuestadores', { method: 'POST', body: JSON.stringify(body) }),
@@ -115,12 +118,15 @@ export const adminApi = {
   toggleEncuestadorActive: (id: string) =>
     request(`/admin/encuestadores/${id}/toggle-active`, { method: 'PUT' }),
 
-  getMapData: () => request<{
-    id: string; location_lat: number; location_lng: number;
-    location_address: string; created_at: string;
-    candidate: { id: string; nombre: string; color_hex: string; partido: string };
-    registered_by_profile: { nombres: string; apellido_paterno: string };
-  }[]>('/admin/map-data'),
+  getMapData: (page = 1) => request<{
+    data: {
+      id: string; location_lat: number; location_lng: number;
+      location_address: string; created_at: string;
+      candidate: { id: string; nombre: string; color_hex: string; partido: string };
+      registered_by_profile: { nombres: string; apellido_paterno: string };
+    }[];
+    total: number; page: number; per_page: number;
+  }>(`/admin/map-data?page=${page}`),
 
   resetVotes: () => request<{ message: string }>('/admin/reset', { method: 'POST' }),
 

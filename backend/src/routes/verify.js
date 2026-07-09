@@ -1,7 +1,9 @@
 import { Router } from 'express'
 import { supabaseAdmin } from '../config/supabase.js'
+import { generalLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
+router.use(generalLimiter)
 
 // Portal público de verificación - buscar por DNI
 router.get('/:dni', async (req, res) => {

@@ -126,12 +126,12 @@ export default function AdminDashboard() {
   }
 
   const loadEncuestadores = async () => {
-    try { setEncuestadores(await adminApi.getEncuestadores()) } catch {}
+    try { const r = await adminApi.getEncuestadores(); setEncuestadores(r.data) } catch {}
   }
 
   const loadMapData = async () => {
     await import('leaflet/dist/leaflet.css')
-    try { setMapData(await adminApi.getMapData()) } catch {}
+    try { const r = await adminApi.getMapData(); setMapData(r.data) } catch {}
   }
 
   useEffect(() => { loadData() }, [])

@@ -2,8 +2,10 @@ import { Router } from 'express'
 import { supabaseAdmin } from '../config/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
 import { requireAdmin } from '../middleware/admin.js'
+import { generalLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
+router.use(generalLimiter)
 
 const CANDIDATE_FIELDS = `
   id, numero_lista, nombre, partido, lema, color_hex,

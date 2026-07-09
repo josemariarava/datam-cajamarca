@@ -1,11 +1,13 @@
 import { Router } from 'express'
 import { supabaseAdmin } from '../config/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
+import { voteLimiter, generalLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
+router.use(generalLimiter)
 
 // Encuestador registra un voto (ingresando DNI del votante)
-router.post('/register', requireAuth, async (req, res) => {
+router.post('/register', voteLimiter, requireAuth, async (req, res) => {
   try {
     const { dni_votante, nombres, apellido_paterno, apellido_materno, candidate_id, direccion, telefono, location_lat, location_lng, location_address } = req.body
 
