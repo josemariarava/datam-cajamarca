@@ -70,8 +70,9 @@ export const votesApi = {
   }>('/votes/results'),
 
   checkVoter: (dni: string) => request<{
-    exists: boolean; voter?: { id: string; dni: string; nombres: string; apellido_paterno: string; apellido_materno: string; direccion: string; telefono: string };
+    exists: boolean; voter?: { id?: string; dni: string; nombres: string; apellido_paterno: string; apellido_materno: string; direccion?: string; telefono?: string };
     has_voted?: boolean; vote?: { id: string; verification_code: string; created_at: string; candidate_id: string };
+    fromMock?: boolean;
   }>(`/votes/check-voter/${dni}`),
 
   undoLast: () => request<{ message: string }>('/votes/undo-last', { method: 'DELETE' }),

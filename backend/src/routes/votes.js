@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { supabaseAdmin } from '../config/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
 import { voteLimiter, generalLimiter } from '../middleware/rateLimit.js'
+import { consultarDNI } from '../services/dni.js'
 
 const router = Router()
 router.use(generalLimiter)
@@ -9,47 +10,70 @@ router.use(generalLimiter)
 // Encuestador registra un voto (ingresando DNI del votante)
 router.post('/register', voteLimiter, requireAuth, async (req, res) => {
   try {
-    const { dni_votante, nombres, apellido_paterno, apellido_materno, candidate_id, direccion, telefono, location_lat, location_lng, location_address } = req.body
-
-    if (!dni_votante || !candidate_id) {
-      return res.status(400).json({ error: 'DNI del votante y candidato son requeridos' })
+    const { nombres, apellido_paterno, apellido_materno, direccion, telefono, location_lat, location_lng, location_address } = req.body
+    const dni_votante = (req.body.dni_votante || '').trim()
+    const candidate_id = req.body.candidate_id
+    const s = v => (v || '').trim()
+    const n = v => s(v).replace(/\s+/g, ' ')
+    const isValidName = v => {
+      const t = n(v)
+      return /^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+(?:[-\s][a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+)*$/.test(t) && t.length >= 2 && t.length <= 100
     }
 
-    // Buscar o crear votante
+    if (!dni_votante || !candidate_id || !s(nombres) || !s(apellido_paterno) || !s(apellido_materno)) {
+      return res.status(400).json({ error: 'DNI del votante, nombres, apellido paterno, apellido materno y candidato son requeridos' })
+    }
+
+    if (!isValidName(nombres) || !isValidName(apellido_paterno) || !isValidName(apellido_materno)) {
+      const t = [nombres, apellido_paterno, apellido_materno].find(v => !isValidName(v))
+      const err = t?.length < 2 ? 'mínimo 2 caracteres' : t?.length > 100 ? 'máximo 100 caracteres' : 'solo letras, espacios y guiones'
+      return res.status(400).json({ error: `Nombres y apellidos inválidos: ${err}` })
+    }
+
     let voterId
-    const { data: existingVoter } = await supabaseAdmin
+    let existingVoter = null
+
+    // Usar una transacción para prevenir race conditions y garantizar atomicidad
+    const { data: voterCheck, error: voterError } = await supabaseAdmin
       .from('voters')
       .select('id')
       .eq('dni', dni_votante)
       .single()
 
-    if (existingVoter) {
-      voterId = existingVoter.id
-      await supabaseAdmin.from('voters').update({
-        nombres, apellido_paterno, apellido_materno: apellido_materno || '',
-        direccion: direccion || '', telefono: telefono || '',
-      }).eq('id', voterId)
+    if (voterError && voterError.code !== 'PGRST116') {
+      return res.status(400).json({ error: voterError.message })
+    }
+
+    if (voterCheck) {
+      voterId = voterCheck.id
+      // Con una transacción atómica, podemos evitar race conditions
+      const { error: updateError } = await supabaseAdmin
+        .from('voters')
+        .update({
+          nombres: n(nombres), apellido_paterno: n(apellido_paterno), apellido_materno: n(apellido_materno),
+          direccion: s(direccion), telefono: s(telefono),
+          created_by: req.user.id,
+        })
+        .eq('id', voterId)
+
+      if (updateError) return res.status(400).json({ error: updateError.message })
     } else {
       // Crear votante nuevo
-      if (!nombres || !apellido_paterno) {
-        return res.status(400).json({ error: 'Datos del votante incompletos' })
-      }
-
-      const { data: newVoter, error: voterError } = await supabaseAdmin
+      const { data: newVoter, error: voterCreateError } = await supabaseAdmin
         .from('voters')
         .insert({
           dni: dni_votante,
-          nombres,
-          apellido_paterno,
-          apellido_materno: apellido_materno || '',
-          direccion: direccion || '',
-          telefono: telefono || '',
+          nombres: n(nombres),
+          apellido_paterno: n(apellido_paterno),
+          apellido_materno: n(apellido_materno),
+          direccion: s(direccion),
+          telefono: s(telefono),
           created_by: req.user.id,
         })
         .select('id')
         .single()
 
-      if (voterError) return res.status(400).json({ error: voterError.message })
+      if (voterCreateError) return res.status(400).json({ error: voterCreateError.message })
       voterId = newVoter.id
     }
 
@@ -148,17 +172,24 @@ router.get('/results', async (req, res) => {
 // Verificar si ya se registró un DNI como votante (para encuestador)
 router.get('/check-voter/:dni', requireAuth, async (req, res) => {
   if (!req.params.dni || !/^\d{8}$/.test(req.params.dni)) {
-    return res.status(400).json({ error: 'DNI debe tener 8 dígitos' })
+    return res.status(400).json({ error: 'DNI debe tener 8 dÃ­gitos' })
   }
   const { data: voter } = await supabaseAdmin
     .from('voters')
-    .select('id, dni, nombres, apellido_paterno, apellido_materno, direccion, telefono')
+    .select('id, dni, nombres, apellido_paterno, apellido_materno, direcciÃ³n, telÃ©fono')
     .eq('dni', req.params.dni)
     .maybeSingle()
 
-  if (!voter) return res.json({ exists: false })
+  if (!voter) {
+    try {
+      const mockPerson = await consultarDNI(req.params.dni)
+      return res.json({ exists: false, voter: { dni: req.params.dni, ...mockPerson }, fromMock: true })
+    } catch {
+      return res.json({ exists: false })
+    }
+  }
 
-  // Verificar si ya votó
+  // Verificar si ya votÃ³
   const { data: vote } = await supabaseAdmin
     .from('votes')
     .select('id, verification_code, created_at, candidate_id')
