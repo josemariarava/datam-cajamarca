@@ -350,7 +350,6 @@ export default function RegisterVote() {
           )}
         </AnimatePresence>
 
-        <div className="relative">
         <AnimatePresence custom={direction} mode="popLayout">
           {/* STEP 1: DNI */}
           {step === 'dni' && (
@@ -361,8 +360,9 @@ export default function RegisterVote() {
               animate="center"
               exit="exit"
               custom={direction}
+              layout
               transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-              className="absolute inset-0 w-full flex items-center justify-center"
+              className="min-h-[250px] flex items-center justify-center"
             >
               <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 p-8 md:p-10 text-center">
                 <motion.div
@@ -452,8 +452,8 @@ export default function RegisterVote() {
               animate="center"
               exit="exit"
               custom={direction}
+              layout
               transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-              className="absolute inset-0 w-full"
             >
               <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 p-4 md:p-6">
                 {voterData?.has_voted ? (
@@ -641,8 +641,8 @@ export default function RegisterVote() {
               animate="center"
               exit="exit"
               custom={direction}
+              layout
               transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-              className="absolute inset-0 w-full"
             >
               <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 p-4 md:p-6">
                 <div className="flex items-center gap-3 mb-5">
@@ -798,8 +798,8 @@ export default function RegisterVote() {
               animate="center"
               exit="exit"
               custom={direction}
+              layout
               transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-              className="absolute inset-0 w-full"
             >
               <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 p-6 md:p-8">
                 <motion.div
@@ -954,7 +954,6 @@ export default function RegisterVote() {
           )}
 
         </AnimatePresence>
-        </div>
 
         <AnimatePresence mode="wait">
           {step === 'celebration' && voteResult && (
