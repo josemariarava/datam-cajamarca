@@ -1,6 +1,6 @@
-const API_URL = 'https://apiperu.dev/api/dni'
+const API_URL = 'https://api.decolecta.com/v1/reniec/dni'
 
-if (!process.env.DNI_API_TOKEN || process.env.DNI_API_TOKEN === 'your_apiperu_token') {
+if (!process.env.DNI_API_TOKEN) {
   console.warn('⚠️ DNI_API_TOKEN no configurado. Solo funcionarán DNIs mockeados.')
 }
 
@@ -21,20 +21,25 @@ export async function consultarDNI(dni) {
     return { dni, ...mockDB[dni] }
   }
 
-  // Si hay token válido (no placeholder), consultar API real
+  // Consultar API real de decolecta.com
   const apiToken = process.env.DNI_API_TOKEN
-  if (apiToken && apiToken !== 'your_apiperu_token') {
-    const res = await fetch(`${API_URL}/${dni}?token=${apiToken}`)
+  if (apiToken) {
+    const res = await fetch(`${API_URL}?numero=${dni}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiToken}`,
+      },
+    })
     if (!res.ok) throw new Error('Error al consultar DNI')
 
     const data = await res.json()
-    if (!data.success) throw new Error('DNI no encontrado')
+    if (!data.document_number) throw new Error('DNI no encontrado')
 
     return {
       dni,
-      nombres: data.nombres,
-      apellido_paterno: data.apellido_paterno,
-      apellido_materno: data.apellido_materno,
+      nombres: (data.first_name || '').trim(),
+      apellido_paterno: (data.first_last_name || '').trim(),
+      apellido_materno: (data.second_last_name || '').trim(),
     }
   }
 
