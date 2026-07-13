@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import { Button, Card, CardHeader, Text, Title1, Title2, Input, Textarea, Spinner, Badge, Tab, TabList, Field, Dialog, DialogTrigger, DialogSurface, DialogTitle, DialogBody, DialogActions, DialogContent, makeStyles, tokens } from '@fluentui/react-components'
 import { candidatesApi, adminApi } from '../services/api'
 import { useToast } from '../contexts/ToastContext'
+import { useCandidates, useAdminStats, useEncuestadores, useMapData } from '../hooks/useQueries'
+import { useQueryClient } from '@tanstack/react-query'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet.markercluster'
@@ -90,12 +92,13 @@ interface MapVote {
 export default function AdminDashboard() {
   const styles = useStyles()
   const { showToast } = useToast()
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<string>('resumen')
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [candidates, setCandidates] = useState<Candidate[]>([])
-  const [encuestadores, setEncuestadores] = useState<Encuestador[]>([])
+  const { data: stats } = useAdminStats()
+  const { data: candidates = [], isLoading: candidatesLoading } = useCandidates()
+  const { data: encuestadoresPage } = useEncuestadores(tab === 'encuestadores' ? 1 : undefined)
+  const { data: mapPage } = useMapData(tab === 'mapa' ? 1 : undefined)
   const [mapData, setMapData] = useState<MapVote[]>([])
-  const [loading, setLoading] = useState(true)
 
   // Candidate form
   const [editCandidate, setEditCandidate] = useState<Candidate | null>(null)
@@ -112,31 +115,17 @@ export default function AdminDashboard() {
   const [showNewEncuestador, setShowNewEncuestador] = useState(false)
   const [newEncForm, setNewEncForm] = useState({ email: '', password: '', dni: '', nombres: '', apellido_paterno: '' })
 
-  const loadData = async () => {
-    try {
-      const [st, cands] = await Promise.all([
-        adminApi.getStats(),
-        candidatesApi.getAll(),
-      ])
-      setStats(st)
-      setCandidates(cands)
-    } catch {} finally {
-      setLoading(false)
+  const encuestadores = encuestadoresPage?.data ?? []
+
+  useEffect(() => {
+    if (tab === 'mapa') {
+      import('leaflet/dist/leaflet.css')
     }
-  }
+  }, [tab])
 
-  const loadEncuestadores = async () => {
-    try { const r = await adminApi.getEncuestadores(); setEncuestadores(r.data) } catch {}
-  }
-
-  const loadMapData = async () => {
-    await import('leaflet/dist/leaflet.css')
-    try { const r = await adminApi.getMapData(); setMapData(r.data) } catch {}
-  }
-
-  useEffect(() => { loadData() }, [])
-  useEffect(() => { if (tab === 'encuestadores') loadEncuestadores() }, [tab])
-  useEffect(() => { if (tab === 'mapa') loadMapData() }, [tab])
+  useEffect(() => {
+    if (mapPage) setMapData(mapPage.data)
+  }, [mapPage])
 
   const handleCandidateSave = async () => {
     const body: any = { ...cForm }
@@ -153,7 +142,8 @@ export default function AdminDashboard() {
         await candidatesApi.create(body)
       }
       resetForm()
-      loadData()
+      queryClient.invalidateQueries({ queryKey: ['candidates'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] })
       showToast(editCandidate ? 'Candidato actualizado' : 'Candidato creado', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error', 'error')
@@ -163,7 +153,8 @@ export default function AdminDashboard() {
   const handleDelete = async (id: string) => {
     try {
       await candidatesApi.delete(id)
-      loadData()
+      queryClient.invalidateQueries({ queryKey: ['candidates'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] })
       showToast('Candidato eliminado', 'success')
     } catch {
       showToast('Error al eliminar candidato', 'error')
@@ -192,7 +183,7 @@ export default function AdminDashboard() {
   const handleToggleEncuestador = async (id: string) => {
     try {
       await adminApi.toggleEncuestadorActive(id)
-      loadEncuestadores()
+      queryClient.invalidateQueries({ queryKey: ['admin', 'encuestadores'] })
       showToast('Estado del encuestador actualizado', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error', 'error')
@@ -204,15 +195,15 @@ export default function AdminDashboard() {
       await adminApi.createEncuestador(newEncForm)
       setShowNewEncuestador(false)
       setNewEncForm({ email: '', password: '', dni: '', nombres: '', apellido_paterno: '' })
-      loadEncuestadores()
-      loadData()
+      queryClient.invalidateQueries({ queryKey: ['admin', 'encuestadores'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] })
       showToast('Encuestador creado', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error', 'error')
     }
   }
 
-  if (loading) return <div className="flex justify-center items-center min-h-[60vh]"><Spinner /></div>
+  if (candidatesLoading && !stats) return <div className="flex justify-center items-center min-h-[60vh]"><Spinner /></div>
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -262,7 +253,7 @@ export default function AdminDashboard() {
             <Button appearance="subtle" style={{ color: 'red' }} onClick={async () => {
               try {
                 await adminApi.resetVotes()
-                loadData()
+                queryClient.invalidateQueries()
                 showToast('Votación reseteada', 'success')
               } catch {
                 showToast('Error al resetear votación', 'error')
@@ -280,7 +271,7 @@ export default function AdminDashboard() {
             {candidates.map(c => (
               <Card key={c.id}>
                 <div className="flex items-start gap-3">
-                  {c.foto_url && <img src={c.foto_url} alt="" className="w-16 h-16 rounded-full object-cover" />}
+                  {c.foto_url && <img src={c.foto_url} alt="" loading="lazy" className="w-16 h-16 rounded-full object-cover" />}
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color_hex }} />

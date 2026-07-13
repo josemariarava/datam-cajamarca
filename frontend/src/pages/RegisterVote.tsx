@@ -2,11 +2,13 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Button, Input, Field, Text, Title1, Title2, Spinner, Badge } from '@fluentui/react-components'
 import { ArrowLeftFilled, ArrowRightFilled, CheckmarkFilled, Person16Regular, Vote16Regular, NumberSymbol16Regular, Warning16Regular, Location16Regular, Call16Regular, DocumentText16Regular, CheckmarkCircle16Filled } from '@fluentui/react-icons'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
-import { candidatesApi, votesApi, authApi, getToken } from '../services/api'
+import { votesApi, authApi, getToken } from '../services/api'
 import { addPendingVote } from '../services/offline'
 import CelebrationScreen from '../components/CelebrationScreen'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
+import { useCandidates } from '../hooks/useQueries'
+import { useGeolocation } from '../hooks/useGeolocation'
 
 const stepIcons: React.ReactNode[] = [
   <NumberSymbol16Regular />,
@@ -82,12 +84,11 @@ export default function RegisterVote() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [voterData, setVoterData] = useState<{ exists: boolean; voter?: any; has_voted?: boolean; vote?: any; fromMock?: boolean } | null>(null)
-  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const { data: candidates = [] } = useCandidates()
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
   const [voteResult, setVoteResult] = useState<VoteResult | null>(null)
   const { showToast } = useToast()
-  const [capturedAddress, setCapturedAddress] = useState('')
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const { coords, address: capturedAddress, startCapture } = useGeolocation()
   const [direction, setDirection] = useState(1)
   
   const voterCache = useRef(new Map()).current
@@ -147,12 +148,6 @@ export default function RegisterVote() {
     setDirection(direction)
     setStep(prevStep)
   }
-
-  useEffect(() => {
-    candidatesApi.getAll()
-      .then(setCandidates)
-      .catch(() => showToast('Error al cargar candidatos', 'error'))
-  }, [])
 
   const CACHE_TTL = 300000 // 5 minutes
 
@@ -223,23 +218,9 @@ export default function RegisterVote() {
     }
   }, [dni, voterCache])
 
-  const captureLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&accept-language=es`)
-            .then(r => r.json())
-            .then(d => setCapturedAddress(d.display_name || ''))
-            .catch(() => {})
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-      )
-    }
-  }
-
-  useEffect(() => { captureLocation() }, [])
+  useEffect(() => {
+    if (step === 'confirm' && !coords) startCapture()
+  }, [step, coords])
 
   const handleVote = async () => {
     if (!selectedCandidate) return
@@ -686,6 +667,7 @@ export default function RegisterVote() {
                                     <img
                                       src={c.foto_url}
                                       alt={c.nombre}
+                                      loading="lazy"
                                       className="w-12 h-12 rounded-full object-cover shadow-sm"
                                       style={{ border: `2px solid ${c.color_hex}30` }}
                                     />
@@ -722,6 +704,7 @@ export default function RegisterVote() {
                                     <img
                                       src={c.logo_partido_url}
                                       alt={c.partido || ''}
+                                      loading="lazy"
                                       className="w-10 h-10 rounded-lg object-contain shadow-xs"
                                     />
                                   )}
@@ -880,6 +863,7 @@ export default function RegisterVote() {
                           <img
                             src={candidateSel.foto_url}
                             alt=""
+                            loading="lazy"
                             className="w-14 h-14 md:w-16 md:h-16 rounded-full object-cover shadow-sm flex-shrink-0"
                             style={{ border: `2px solid ${candidateSel.color_hex}40` }}
                           />
