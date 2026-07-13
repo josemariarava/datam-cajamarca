@@ -84,6 +84,12 @@ export const verifyApi = {
     voter: { dni: string; nombres: string; apellido_paterno: string; apellido_materno: string };
     candidate: { nombre: string; foto_url: string; partido: string; color_hex: string; logo_partido_url: string; lema: string };
   }>(`/verify/${dni}`),
+
+  byCode: (code: string) => request<{
+    verification_code: string; created_at: string;
+    voter: { dni: string; nombres: string; apellido_paterno: string; apellido_materno: string };
+    candidate: { nombre: string; foto_url: string; partido: string; color_hex: string; logo_partido_url: string; lema: string };
+  }>(`/votes/verify-code/${code}`),
 }
 
 export const encuestadorApi = {
