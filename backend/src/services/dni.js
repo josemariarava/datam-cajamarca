@@ -1,10 +1,12 @@
+import logger from '../config/logger.js'
+
 const API_URL = 'https://api.decolecta.com/v1/reniec/dni'
 
 if (!process.env.DNI_API_TOKEN) {
-  console.warn('⚠️ DNI_API_TOKEN no configurado. Solo funcionarán DNIs mockeados.')
+  logger.warn('DNI_API_TOKEN no configurado. Solo funcionarán DNIs mockeados.')
 }
 
-const mockDB = {
+const mockDB = process.env.NODE_ENV === 'production' ? {} : {
   '12345678': { nombres: 'Juan', apellido_paterno: 'Pérez', apellido_materno: 'López' },
   '87654321': { nombres: 'María', apellido_paterno: 'García', apellido_materno: 'Rodríguez' },
   '12345612': { nombres: 'Carlos', apellido_paterno: 'Arribasplata', apellido_materno: 'Tucto' },

@@ -15,7 +15,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${API}${path}`, { ...options, headers })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+  const res = await fetch(`${API}${path}`, { ...options, headers, signal: controller.signal })
+  clearTimeout(timeout)
 
   if (res.status === 401) {
     await supabase.auth.signOut()
@@ -23,7 +26,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error('Sesión expirada')
   }
 
-  const data = await res.json()
+  let data: any
+  try {
+    data = await res.json()
+  } catch {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || 'El servidor no respondió. Verifica tu conexión e intenta de nuevo.')
+  }
   if (!res.ok) throw new Error(data.error || 'Error del servidor')
   return data
 }
@@ -104,11 +113,41 @@ export const encuestadorApi = {
   }>('/encuestador/dashboard'),
 }
 
+export const configApi = {
+  getPublic: () => request<{
+    system_name: string; tagline: string; logo_url: string | null;
+    primary_color: string; secondary_color: string;
+  }>('/config'),
+}
+
+export interface VoteRow {
+  id: string
+  verification_code: string
+  created_at: string
+  location_lat: number | null
+  location_lng: number | null
+  location_address: string | null
+  voter: {
+    dni: string; nombres: string; apellido_paterno: string; apellido_materno: string
+    direccion: string | null; telefono: string | null
+  }
+  candidate: {
+    id: string; nombre: string; partido: string; color_hex: string; foto_url: string
+  }
+  registered_by_profile: {
+    nombres: string; apellido_paterno: string
+  }
+}
+
 export const adminApi = {
   getStats: () => request<{
     total_encuestadores: number; total_votantes: number;
     total_votos: number; total_candidatos: number; participacion_pct: string;
   }>('/admin/stats'),
+
+  getVotes: (page = 1, search = '') => request<{
+    data: VoteRow[]; total: number; page: number; per_page: number
+  }>(`/admin/votes?page=${page}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
 
   getEncuestadores: (page = 1) => request<{
     data: {
@@ -137,10 +176,29 @@ export const adminApi = {
 
   resetVotes: () => request<{ message: string }>('/admin/reset', { method: 'POST' }),
 
-  exportCSV: async () => {
+  getConfig: () => request<{
+    id: number; system_name: string; tagline: string; logo_url: string | null;
+    primary_color: string; secondary_color: string;
+    updated_by: string; updated_at: string;
+  }>('/admin/config'),
+
+  updateConfig: (body: {
+    system_name?: string; tagline?: string; logo_url?: string | null;
+    primary_color?: string; secondary_color?: string;
+  }) => request<{
+    id: number; system_name: string; tagline: string; logo_url: string | null;
+    primary_color: string; secondary_color: string;
+    updated_by: string; updated_at: string;
+  }>('/admin/config', { method: 'PUT', body: JSON.stringify(body) }),
+
+  exportData: async (format: 'xlsx' | 'csv' = 'xlsx') => {
     const token = await getToken()
-    const res = await fetch(`${API}/admin/export`, { headers: { Authorization: `Bearer ${token}` } })
-    if (!res.ok) throw new Error('Error al exportar CSV')
+    const res = await fetch(`${API}/admin/export?format=${format}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(`Error al exportar ${format === 'xlsx' ? 'Excel' : 'CSV'}`)
     return res.blob()
   },
+
+  exportCSV: async () => adminApi.exportData('csv'),
 }

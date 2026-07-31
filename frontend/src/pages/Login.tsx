@@ -40,7 +40,7 @@ export default function Login() {
               <rect x="18" y="28" width="64" height="12" rx="4" fill="#2563eb" opacity="0.2"/>
               <rect x="18" y="45" width="48" height="12" rx="4" fill="#2563eb" opacity="0.2"/>
               <circle cx="78" cy="51" r="8" fill="#22c55e"/>
-              <path d="M74 51l3 3 5-5" stroke="white" stroke-width="2" fill="none"/>
+              <path d="M74 51l3 3 5-5" stroke="white" strokeWidth={2} fill="none"/>
               <rect x="18" y="62" width="32" height="12" rx="4" fill="#2563eb" opacity="0.2"/>
             </svg>
           </div>

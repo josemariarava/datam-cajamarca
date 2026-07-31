@@ -83,7 +83,7 @@ export default function RegisterVote() {
   const [dni, setDni] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [voterData, setVoterData] = useState<{ exists: boolean; voter?: any; has_voted?: boolean; vote?: any; fromMock?: boolean } | null>(null)
+  const [voterData, setVoterData] = useState<{ exists: boolean; voter?: any; has_voted?: boolean; vote?: any; fromMock?: boolean; timestamp?: number } | null>(null)
   const { data: candidates = [] } = useCandidates()
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
   const [voteResult, setVoteResult] = useState<VoteResult | null>(null)
@@ -152,7 +152,7 @@ export default function RegisterVote() {
   const CACHE_TTL = 300000 // 5 minutes
 
   const isCacheValid = (cacheKey: string): boolean => {
-    const cached = voterCache.current?.get(cacheKey)
+    const cached = voterCache.get(cacheKey)
     if (!cached) return false
     
     const now = Date.now()
@@ -167,7 +167,7 @@ export default function RegisterVote() {
     const cacheKey = `voter_${dni}`
     
     if (isCacheValid(cacheKey)) {
-      const cached = voterCache.current?.get(cacheKey)!
+      const cached = voterCache.get(cacheKey)!
       setVoterData(cached)
       
       if (cached.voter) {
@@ -177,8 +177,13 @@ export default function RegisterVote() {
         setNewDireccion(cached.voter.direccion ?? '')
         setNewTelefono(cached.voter.telefono ?? '')
       }
+
+      if (cached.has_voted) {
+        setLoading(false)
+        return
+      }
       
-      if (cached.exists && !cached.has_voted) {
+      if (cached.exists) {
         goForward('candidate')
       } else {
         goForward('voter-data')
@@ -196,7 +201,7 @@ export default function RegisterVote() {
       }
       
       setVoterData(enrichedData)
-      voterCache.current?.set(cacheKey, enrichedData)
+      voterCache.set(cacheKey, enrichedData)
       
       if (res.voter) {
         setNewNombres(res.voter.nombres ?? '')
@@ -205,8 +210,10 @@ export default function RegisterVote() {
         setNewDireccion(res.voter.direccion ?? '')
         setNewTelefono(res.voter.telefono ?? '')
       }
+
+      if (res.has_voted) return
       
-      if (res.exists && !res.has_voted) {
+      if (res.exists) {
         goForward('candidate')
       } else {
         goForward('voter-data')
@@ -226,6 +233,19 @@ export default function RegisterVote() {
     if (!selectedCandidate) return
     setLoading(true)
     setError('')
+
+    try {
+      const check = await votesApi.checkVoter(dni)
+      if (check.has_voted) {
+        setVoterData({ ...check, timestamp: Date.now() })
+        setStep('dni')
+        setLoading(false)
+        return
+      }
+    } catch {
+      // Si falla la re-verificación, continuamos (register lo atrapará si hay error)
+    }
+
     const n = (v: string) => normalizeName(v)
     const voteData = {
       dni_votante: dni.trim(), nombres: n(newNombres), apellido_paterno: n(newApPat),
@@ -316,7 +336,7 @@ export default function RegisterVote() {
 
         {/* Error alert */}
         <AnimatePresence>
-          {error && (
+          {error && !voterData?.has_voted && (
             <motion.div
               initial={{ opacity: 0, y: -20, height: 0 }}
               animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -420,6 +440,56 @@ export default function RegisterVote() {
                     </>
                   )}
                 </motion.div>
+
+                {/* Ya votó card */}
+                {voterData?.has_voted && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="mt-6 pt-6 border-t border-gray-100"
+                  >
+                    <div className="bg-red-50/80 rounded-2xl border border-red-200/60 p-6 text-center">
+                      <div className="w-16 h-16 mx-auto mb-3 bg-red-100 rounded-full flex items-center justify-center">
+                        <Warning16Regular className="text-red-500 !text-2xl" />
+                      </div>
+                      <Title2 className="!text-red-600">Ya emitió su voto</Title2>
+                      <Text block className="mt-1 text-gray-500 text-sm">
+                        Esta persona ya emitió su voto en este proceso electoral.
+                      </Text>
+
+                      {voterData.voter && (
+                        <div className="mt-4 bg-white/70 rounded-xl px-4 py-3 border border-red-100 text-left">
+                          <Text size={200} className="text-gray-400 block">Votante</Text>
+                          <Text weight="semibold" className="text-gray-800 block">
+                            {voterData.voter.nombres} {voterData.voter.apellido_paterno}
+                          </Text>
+                          <Text size={200} className="text-gray-500 block">DNI: {dni}</Text>
+                        </div>
+                      )}
+
+                      {voterData.vote && (
+                        <div className="mt-3 bg-white/70 rounded-xl px-4 py-3 border border-red-100 text-left space-y-1">
+                          <Text size={200} className="text-gray-400 block">Código de verificación</Text>
+                          <Text weight="semibold" size={400} className="tracking-widest font-mono block">
+                            {voterData.vote.verification_code}
+                          </Text>
+                          <Text size={200} className="text-gray-400 block">
+                            {new Date(voterData.vote.created_at).toLocaleString('es-PE')}
+                          </Text>
+                        </div>
+                      )}
+
+                      <Button
+                        appearance="primary"
+                        size="large"
+                        className="mt-5"
+                        onClick={reset}
+                      >
+                        Registrar otro voto
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
           )}
@@ -596,8 +666,11 @@ export default function RegisterVote() {
                             <Button
                               size="medium"
                               appearance="primary"
-                              onClick={() => goForward('candidate')}
-                              disabled={!filled(newNombres) || !filled(newApPat) || !filled(newApMat) || !isValidName(newNombres) || !isValidName(newApPat) || !isValidName(newApMat)}
+                              onClick={() => {
+                                if (voterData?.has_voted) { setStep('dni'); return }
+                                goForward('candidate')
+                              }}
+                              disabled={voterData?.has_voted || !filled(newNombres) || !filled(newApPat) || !filled(newApMat) || !isValidName(newNombres) || !isValidName(newApPat) || !isValidName(newApMat)}
                               icon={<ArrowRightFilled />}
                               className="flex-1"
                             >
@@ -755,7 +828,11 @@ export default function RegisterVote() {
                       <Button
                         appearance="primary"
                         size="medium"
-                        onClick={() => goForward('confirm')}
+                        onClick={() => {
+                          if (voterData?.has_voted) { setStep('dni'); return }
+                          goForward('confirm')
+                        }}
+                        disabled={voterData?.has_voted}
                         icon={<ArrowRightFilled />}
                         className="w-full sm:w-auto sm:flex-none"
                       >

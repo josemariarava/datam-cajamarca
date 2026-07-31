@@ -39,7 +39,7 @@ export default defineConfig({
       : []),
   ],
   build: {
-    sourcemap: true,
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id: string) {
@@ -52,7 +52,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:3001',
+      '/api': {
+        target: 'http://localhost:3001',
+        timeout: 60000,
+        proxyTimeout: 60000,
+      },
     },
   },
 })

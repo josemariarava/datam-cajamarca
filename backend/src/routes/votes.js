@@ -1,8 +1,11 @@
 import { Router } from 'express'
 import { supabaseAdmin } from '../config/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
-import { voteLimiter, generalLimiter } from '../middleware/rateLimit.js'
+import { voteLimiter, verifyLimiter, generalLimiter } from '../middleware/rateLimit.js'
 import { consultarDNI } from '../services/dni.js'
+import { sanitizeError } from '../utils/errors.js'
+
+const VOTER_FIELDS = ['nombres', 'apellido_paterno', 'apellido_materno', 'direccion', 'telefono']
 
 const router = Router()
 router.use(generalLimiter)
@@ -41,39 +44,33 @@ router.post('/register', voteLimiter, requireAuth, async (req, res) => {
       .single()
 
     if (voterError && voterError.code !== 'PGRST116') {
-      return res.status(400).json({ error: voterError.message })
+      return res.status(400).json({ error: sanitizeError(voterError) })
     }
 
     if (voterCheck) {
       voterId = voterCheck.id
-      // Con una transacción atómica, podemos evitar race conditions
+      const updateData = { created_by: req.user.id }
+      for (const f of VOTER_FIELDS) {
+        if (req.body[f] !== undefined) updateData[f] = f === 'nombres' || f.startsWith('apellido') ? n(req.body[f]) : s(req.body[f])
+      }
       const { error: updateError } = await supabaseAdmin
         .from('voters')
-        .update({
-          nombres: n(nombres), apellido_paterno: n(apellido_paterno), apellido_materno: n(apellido_materno),
-          direccion: s(direccion), telefono: s(telefono),
-          created_by: req.user.id,
-        })
+        .update(updateData)
         .eq('id', voterId)
 
-      if (updateError) return res.status(400).json({ error: updateError.message })
+      if (updateError) return res.status(400).json({ error: sanitizeError(updateError) })
     } else {
-      // Crear votante nuevo
+      const insertVoter = { dni: dni_votante, created_by: req.user.id }
+      for (const f of VOTER_FIELDS) {
+        if (req.body[f] !== undefined) insertVoter[f] = f === 'nombres' || f.startsWith('apellido') ? n(req.body[f]) : s(req.body[f])
+      }
       const { data: newVoter, error: voterCreateError } = await supabaseAdmin
         .from('voters')
-        .insert({
-          dni: dni_votante,
-          nombres: n(nombres),
-          apellido_paterno: n(apellido_paterno),
-          apellido_materno: n(apellido_materno),
-          direccion: s(direccion),
-          telefono: s(telefono),
-          created_by: req.user.id,
-        })
+        .insert(insertVoter)
         .select('id')
         .single()
 
-      if (voterCreateError) return res.status(400).json({ error: voterCreateError.message })
+      if (voterCreateError) return res.status(400).json({ error: sanitizeError(voterCreateError) })
       voterId = newVoter.id
     }
 
@@ -95,7 +92,7 @@ router.post('/register', voteLimiter, requireAuth, async (req, res) => {
       if (voteError.code === '23505') {
         return res.status(400).json({ error: 'Esta persona ya emitió su voto' })
       }
-      return res.status(400).json({ error: voteError.message })
+      return res.status(400).json({ error: sanitizeError(voteError) })
     }
 
     // Devolver datos completos del votante + voto
@@ -113,12 +110,12 @@ router.post('/register', voteLimiter, requireAuth, async (req, res) => {
       voter: voterData,
     })
   } catch (err) {
-    res.status(400).json({ error: err.message })
+    res.status(400).json({ error: sanitizeError(err) })
   }
 })
 
 // Verificar voto por DNI (público, sin auth)
-router.get('/verify/:dni', async (req, res) => {
+router.get('/verify/:dni', verifyLimiter, async (req, res) => {
   if (!req.params.dni || !/^\d{8}$/.test(req.params.dni)) {
     return res.status(400).json({ error: 'DNI debe tener 8 dígitos' })
   }
@@ -132,14 +129,14 @@ router.get('/verify/:dni', async (req, res) => {
     .eq('voter.dni', req.params.dni)
     .maybeSingle()
 
-  if (error) return res.status(400).json({ error: error.message })
+  if (error) return res.status(400).json({ error: sanitizeError(error) })
   if (!data) return res.status(404).json({ error: 'No se encontró voto para este DNI' })
 
   res.json(data)
 })
 
 // Verificar voto por código (público)
-router.get('/verify-code/:code', async (req, res) => {
+router.get('/verify-code/:code', verifyLimiter, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('votes')
     .select(`
@@ -150,7 +147,7 @@ router.get('/verify-code/:code', async (req, res) => {
     .eq('verification_code', req.params.code.toUpperCase())
     .maybeSingle()
 
-  if (error) return res.status(400).json({ error: error.message })
+  if (error) return res.status(400).json({ error: sanitizeError(error) })
   if (!data) return res.status(404).json({ error: 'Código inválido' })
 
   res.json(data)
@@ -162,7 +159,7 @@ router.get('/results', async (req, res) => {
     .from('vote_results')
     .select('*')
 
-  if (error) return res.status(400).json({ error: error.message })
+  if (error) return res.status(400).json({ error: sanitizeError(error) })
 
   const total = data.reduce((sum, r) => sum + Number(r.votos), 0)
 
@@ -172,11 +169,11 @@ router.get('/results', async (req, res) => {
 // Verificar si ya se registró un DNI como votante (para encuestador)
 router.get('/check-voter/:dni', requireAuth, async (req, res) => {
   if (!req.params.dni || !/^\d{8}$/.test(req.params.dni)) {
-    return res.status(400).json({ error: 'DNI debe tener 8 dÃ­gitos' })
+    return res.status(400).json({ error: 'DNI debe tener 8 dígitos' })
   }
   const { data: voter } = await supabaseAdmin
     .from('voters')
-    .select('id, dni, nombres, apellido_paterno, apellido_materno, direcciÃ³n, telÃ©fono')
+    .select('id, dni, nombres, apellido_paterno, apellido_materno, direccion, telefono')
     .eq('dni', req.params.dni)
     .maybeSingle()
 
@@ -189,7 +186,7 @@ router.get('/check-voter/:dni', requireAuth, async (req, res) => {
     }
   }
 
-  // Verificar si ya votÃ³
+  // Verificar si ya votó
   const { data: vote } = await supabaseAdmin
     .from('votes')
     .select('id, verification_code, created_at, candidate_id')
@@ -226,7 +223,7 @@ router.delete('/undo-last', requireAuth, async (req, res) => {
     .delete()
     .eq('id', lastVote.id)
 
-  if (error) return res.status(400).json({ error: error.message })
+  if (error) return res.status(400).json({ error: sanitizeError(error) })
 
   await supabaseAdmin.from('audit_log').insert({
     user_id: req.user.id, action: 'undo_vote',

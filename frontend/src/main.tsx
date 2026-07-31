@@ -30,7 +30,7 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <FluentProvider theme={webLightTheme}>
+      <FluentProvider theme={{ ...webLightTheme, fontFamilyBase: "'Outfit', sans-serif" }}>
         <BrowserRouter>
           <App />
         </BrowserRouter>

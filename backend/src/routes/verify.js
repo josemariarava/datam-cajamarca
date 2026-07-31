@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import { supabaseAdmin } from '../config/supabase.js'
-import { generalLimiter } from '../middleware/rateLimit.js'
+import { verifyLimiter } from '../middleware/rateLimit.js'
+import { sanitizeError } from '../utils/errors.js'
 
 const router = Router()
-router.use(generalLimiter)
+router.use(verifyLimiter)
 
 // Portal público de verificación - buscar por DNI
 router.get('/:dni', async (req, res) => {
@@ -17,7 +18,7 @@ router.get('/:dni', async (req, res) => {
     .eq('voter.dni', req.params.dni)
     .maybeSingle()
 
-  if (error) return res.status(400).json({ error: error.message })
+  if (error) return res.status(400).json({ error: sanitizeError(error) })
   if (!data) return res.status(404).json({ error: 'No se encontró un voto registrado con este DNI' })
 
   res.json(data)

@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
-import { Button, Card, CardHeader, Text, Title1, Title2, Input, Textarea, Spinner, Badge, Tab, TabList, Field, Dialog, DialogTrigger, DialogSurface, DialogTitle, DialogBody, DialogActions, DialogContent, makeStyles, tokens } from '@fluentui/react-components'
-import { candidatesApi, adminApi } from '../services/api'
+import { Button, Card, CardHeader, Text, Title1, Title2, Input, Textarea, Spinner, Badge, Tab, TabList, Field, Dialog, DialogTrigger, DialogSurface, DialogTitle, DialogBody, DialogActions, DialogContent, Radio, RadioGroup, makeStyles, tokens } from '@fluentui/react-components'
+import { candidatesApi, adminApi, configApi } from '../services/api'
 import { useToast } from '../contexts/ToastContext'
-import { useCandidates, useAdminStats, useEncuestadores, useMapData } from '../hooks/useQueries'
+import { useCandidates, useAdminStats, useEncuestadores, useMapData, useVotes } from '../hooks/useQueries'
 import { useQueryClient } from '@tanstack/react-query'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
@@ -81,6 +81,24 @@ interface Encuestador {
 interface Stats {
   total_encuestadores: number; total_votantes: number
   total_votos: number; total_candidatos: number; participacion_pct: string
+}
+interface VoteRow {
+  id: string
+  verification_code: string
+  created_at: string
+  location_lat: number | null
+  location_lng: number | null
+  location_address: string | null
+  voter: {
+    dni: string; nombres: string; apellido_paterno: string; apellido_materno: string
+    direccion: string | null; telefono: string | null
+  }
+  candidate: {
+    id: string; nombre: string; partido: string; color_hex: string; foto_url: string
+  }
+  registered_by_profile: {
+    nombres: string; apellido_paterno: string
+  }
 }
 interface MapVote {
   id: string; location_lat: number; location_lng: number
@@ -206,46 +224,58 @@ export default function AdminDashboard() {
   if (candidatesLoading && !stats) return <div className="flex justify-center items-center min-h-[60vh]"><Spinner /></div>
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-4 md:p-6 pb-24 md:pb-6">
       <Title1>Panel de Administración</Title1>
 
       {/* Stats cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 my-6">
-          <Card><CardHeader header={<Title2>{stats.total_encuestadores}</Title2>} /><Text size={200}>Encuestadores</Text></Card>
-          <Card><CardHeader header={<Title2>{stats.total_votantes}</Title2>} /><Text size={200}>Votantes</Text></Card>
-          <Card><CardHeader header={<Title2>{stats.total_votos}</Title2>} /><Text size={200}>Votos</Text></Card>
-          <Card><CardHeader header={<Title2>{stats.total_candidatos}</Title2>} /><Text size={200}>Candidatos</Text></Card>
-          <Card><CardHeader header={<Title2>{stats.participacion_pct}%</Title2>} /><Text size={200}>Participación</Text></Card>
+        <div className="grid grid-cols-5 gap-1.5 md:gap-3 my-4 md:my-6">
+          <Card size="small" className="!p-2 md:!p-3">
+            <CardHeader header={<Text weight="bold" size={400}>{stats.total_encuestadores}</Text>} className="!p-0" />
+            <Text size={100}>Encuestadores</Text>
+          </Card>
+          <Card size="small" className="!p-2 md:!p-3">
+            <CardHeader header={<Text weight="bold" size={400}>{stats.total_votantes}</Text>} className="!p-0" />
+            <Text size={100}>Votantes</Text>
+          </Card>
+          <Card size="small" className="!p-2 md:!p-3">
+            <CardHeader header={<Text weight="bold" size={400}>{stats.total_votos}</Text>} className="!p-0" />
+            <Text size={100}>Votos</Text>
+          </Card>
+          <Card size="small" className="!p-2 md:!p-3">
+            <CardHeader header={<Text weight="bold" size={400}>{stats.total_candidatos}</Text>} className="!p-0" />
+            <Text size={100}>Candidatos</Text>
+          </Card>
+          <Card size="small" className="!p-2 md:!p-3">
+            <CardHeader header={<Text weight="bold" size={400}>{stats.participacion_pct}%</Text>} className="!p-0" />
+            <Text size={100}>Participación</Text>
+          </Card>
         </div>
       )}
 
-      {/* Tabs */}
-      <TabList selectedValue={tab} onTabSelect={(_, d) => setTab(d.value as string)}>
-        <Tab value="resumen">Resumen</Tab>
-        <Tab value="candidatos">Candidatos</Tab>
-        <Tab value="encuestadores">Encuestadores</Tab>
-        <Tab value="mapa">Mapa GPS</Tab>
-      </TabList>
+      {/* Tabs - sticky en mobile */}
+      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-lg -mx-4 md:-mx-6 px-4 md:px-6 pb-1 md:static md:bg-transparent md:backdrop-blur-none md:mx-0 md:px-0 md:pb-0 border-b md:border-b-0 border-gray-100">
+        <div className="overflow-x-auto no-scrollbar -mb-px">
+          <TabList selectedValue={tab} onTabSelect={(_, d) => setTab(d.value as string)}>
+            <Tab value="resumen">Resumen</Tab>
+            <Tab value="candidatos">Candidatos</Tab>
+            <Tab value="encuestadores">Encuestadores</Tab>
+            <Tab value="votos">Votos</Tab>
+            <Tab value="mapa">Mapa GPS</Tab>
+            <Tab value="configuracion">Configuración</Tab>
+          </TabList>
+        </div>
+      </div>
 
       {/* TAB: Resumen */}
       {tab === 'resumen' && (
-        <div className="mt-6">
+        <div className="mt-6 space-y-4">
           <Card>
-            <CardHeader header={<Title2>Exportar datos</Title2>} />
-            <Button appearance="primary" onClick={async () => {
-              try {
-                const blob = await adminApi.exportCSV()
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = 'votos.csv'
-                a.click()
-                URL.revokeObjectURL(url)
-              } catch { alert('Error al descargar CSV') }
-            }}>
-              📥 Descargar CSV
-            </Button>
+            <CardHeader
+              header={<Title2>📊 Exportar datos</Title2>}
+              description={<Text>Descarga todos los votos registrados en formato Excel o CSV</Text>}
+            />
+            <ExportCard />
           </Card>
           <Card className="mt-4">
             <CardHeader header={<Title2>Resetear votación</Title2>} />
@@ -458,6 +488,9 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* TAB: Votos */}
+      {tab === 'votos' && <VotosTab />}
+
       {/* TAB: Mapa GPS */}
       {tab === 'mapa' && (
         <div className="mt-6">
@@ -465,7 +498,7 @@ export default function AdminDashboard() {
             <CardHeader header={<Title2>Mapa de votos</Title2>} />
             <Text block className="mb-4">{mapData.length} votos con ubicación registrada</Text>
             <div className="h-[500px] w-full rounded-lg overflow-hidden">
-              <MapContainer center={[-12.0464, -77.0428]} zoom={12} className="h-full w-full" scrollWheelZoom={false}>
+              <MapContainer center={[-7.1577, -78.5173]} zoom={12} className="h-full w-full" scrollWheelZoom={false}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                 <MarkerClusterGroup markers={mapData} />
               </MapContainer>
@@ -473,6 +506,361 @@ export default function AdminDashboard() {
           </Card>
         </div>
       )}
+
+      {/* TAB: Configuración */}
+      {tab === 'configuracion' && (
+        <ConfigTab />
+      )}
     </div>
+  )
+}
+
+function ExportCard() {
+  const [format, setFormat] = useState<'xlsx' | 'csv'>('xlsx')
+  const [loading, setLoading] = useState(false)
+
+  const handleExport = async () => {
+    setLoading(true)
+    try {
+      const blob = await adminApi.exportData(format)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const ext = format === 'xlsx' ? 'xlsx' : 'csv'
+      const dateStr = new Date().toISOString().slice(0, 10)
+      a.href = url
+      a.download = `votos_${dateStr}.${ext}`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert(`Error al exportar ${format === 'xlsx' ? 'Excel' : 'CSV'}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="p-2">
+      <Field label="Formato de exportación">
+        <RadioGroup value={format} onChange={(_, v) => setFormat(v as 'xlsx' | 'csv')}>
+          <Radio value="xlsx" label="Excel (.xlsx) — Recomendado" />
+          <Radio value="csv" label="CSV (.csv) — Para procesamiento de datos" />
+        </RadioGroup>
+      </Field>
+
+      <div className="mt-4">
+        <Button appearance="primary" size="large" onClick={handleExport} disabled={loading}>
+          {loading ? <Spinner size="tiny" /> : <span>📥 Exportar {format === 'xlsx' ? 'Excel' : 'CSV'}</span>}
+        </Button>
+      </div>
+
+      <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+        <Text block weight="semibold" className="mb-1">ℹ️ El archivo incluirá:</Text>
+        <ul className="list-disc list-inside space-y-0.5 text-blue-700">
+          <li><strong>Votos:</strong> detalle completo de cada voto registrado</li>
+          <li><strong>Resumen por candidato:</strong> votos y porcentaje por candidato</li>
+          <li><strong>Resumen por encuestador:</strong> votos registrados por cada encuestador</li>
+        </ul>
+      </div>
+
+      <Text block className="mt-3 text-xs text-gray-400">
+        Límite: 3 exportaciones por hora
+      </Text>
+    </div>
+  )
+}
+
+function ConfigTab() {
+  const { showToast } = useToast()
+  const queryClient = useQueryClient()
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    system_name: '', tagline: '', logo_url: '',
+    primary_color: '#2563eb', secondary_color: '#7c3aed',
+  })
+
+  useEffect(() => {
+    setLoading(true)
+    adminApi.getConfig()
+      .then((data) => setForm({
+        system_name: data.system_name || '',
+        tagline: data.tagline || '',
+        logo_url: data.logo_url || '',
+        primary_color: data.primary_color || '#2563eb',
+        secondary_color: data.secondary_color || '#7c3aed',
+      }))
+      .catch(() => showToast('Error al cargar configuración', 'error'))
+      .finally(() => setLoading(false))
+  }, [showToast])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await adminApi.updateConfig({
+        system_name: form.system_name.trim(),
+        tagline: form.tagline.trim(),
+        logo_url: form.logo_url || null,
+        primary_color: form.primary_color,
+        secondary_color: form.secondary_color,
+      })
+      queryClient.invalidateQueries({ queryKey: ['config'] })
+      showToast('Configuración guardada', 'success')
+    } catch {
+      showToast('Error al guardar configuración', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mt-6 flex items-center justify-center py-20">
+        <Spinner size="large" label="Cargando configuración..." />
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-6">
+      <Card>
+        <CardHeader header={<Title2>Configuración del Sistema</Title2>}
+          description={<Text>Personaliza el nombre, eslogan, logo y colores de la aplicación</Text>}
+        />
+        <div className="space-y-5 p-2">
+          <Field label="Nombre del sistema" required>
+            <Input
+              value={form.system_name}
+              onChange={(e) => setForm({ ...form, system_name: e.target.value })}
+              placeholder="Ej: Datam Cajamarca"
+            />
+          </Field>
+
+          <Field label="Eslogan" required>
+            <Input
+              value={form.tagline}
+              onChange={(e) => setForm({ ...form, tagline: e.target.value })}
+              placeholder="Ej: Tu voto importa"
+            />
+          </Field>
+
+          <Field label="Logo URL">
+            <Input
+              value={form.logo_url}
+              onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+              placeholder="URL del logo (opcional)"
+            />
+            {form.logo_url && (
+              <div className="mt-2">
+                <img src={form.logo_url} alt="" className="h-12 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              </div>
+            )}
+          </Field>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Color primario">
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={form.primary_color}
+                  onChange={(e) => setForm({ ...form, primary_color: e.target.value })}
+                  className="w-10 h-10 rounded cursor-pointer border border-gray-200"
+                />
+                <Input value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} />
+              </div>
+            </Field>
+            <Field label="Color secundario">
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={form.secondary_color}
+                  onChange={(e) => setForm({ ...form, secondary_color: e.target.value })}
+                  className="w-10 h-10 rounded cursor-pointer border border-gray-200"
+                />
+                <Input value={form.secondary_color} onChange={(e) => setForm({ ...form, secondary_color: e.target.value })} />
+              </div>
+            </Field>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100 flex justify-end">
+            <Button appearance="primary" size="large" onClick={handleSave} disabled={saving || !form.system_name.trim() || !form.tagline.trim()}>
+              {saving ? <Spinner size="tiny" /> : 'Guardar cambios'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function VotosTab() {
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [selectedVote, setSelectedVote] = useState<VoteRow | null>(null)
+  const { showToast } = useToast()
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const { data: votesPage, isLoading } = useVotes(page, debouncedSearch)
+  const votes = votesPage?.data ?? []
+  const total = votesPage?.total ?? 0
+  const perPage = votesPage?.per_page ?? 20
+  const totalPages = total > 0 ? Math.ceil(total / perPage) : 0
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code)
+    showToast('Código de verificación copiado', 'success')
+  }
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center gap-4 mb-4">
+        <Input
+          placeholder="🔍 Buscar por DNI o nombre..."
+          value={search}
+          onChange={(e, d) => setSearch(d.value)}
+          className="max-w-sm"
+        />
+        <Text block className="text-gray-500">{total} votos encontrados</Text>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-20"><Spinner size="large" /></div>
+      ) : votes.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Text block>No se encontraron votos{debouncedSearch ? ' con ese criterio de búsqueda' : ''}.</Text>
+        </Card>
+      ) : (
+        <>
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase w-12">#</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Votante</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">DNI</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Candidato</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Encuestador</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                {votes.map((v, i) => (
+                  <tr key={v.id}
+                    className="border-b hover:bg-blue-50 cursor-pointer transition-colors"
+                    onClick={() => setSelectedVote(v)}>
+                    <td className="p-3 text-gray-400 text-sm">{(page - 1) * perPage + i + 1}</td>
+                    <td className="p-3 font-medium">{v.voter.nombres} {v.voter.apellido_paterno} {v.voter.apellido_materno}</td>
+                    <td className="p-3 font-mono text-sm">{v.voter.dni}</td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: v.candidate.color_hex }} />
+                        <span>{v.candidate.nombre}</span>
+                      </div>
+                    </td>
+                    <td className="p-3 text-sm text-gray-600">{v.registered_by_profile?.nombres} {v.registered_by_profile?.apellido_paterno}</td>
+                    <td className="p-3 text-sm text-gray-500">{new Date(v.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <Button appearance="subtle" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
+                ← Anterior
+              </Button>
+              <Text block className="text-gray-500">Página {page} de {totalPages}</Text>
+              <Button appearance="subtle" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+                Siguiente →
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      <Dialog open={!!selectedVote} onOpenChange={(_, d) => { if (!d.open) setSelectedVote(null) }}>
+        <DialogSurface className="!max-w-lg">
+          <DialogBody>
+            <DialogTitle>Detalle del Voto</DialogTitle>
+            <DialogContent className="flex flex-col gap-3">
+              {selectedVote && <VoteDetail vote={selectedVote} onCopyCode={copyCode} />}
+            </DialogContent>
+            <DialogActions>
+              <DialogTrigger disableButtonEnhancement>
+                <Button appearance="primary">Cerrar</Button>
+              </DialogTrigger>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+    </div>
+  )
+}
+
+function VoteDetail({ vote, onCopyCode }: { vote: VoteRow; onCopyCode: (code: string) => void }) {
+  return (
+    <>
+      <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+        <Text weight="semibold" className="text-gray-500 uppercase text-xs tracking-wider block mb-2">👤 VOTANTE</Text>
+        <Text weight="semibold" size={500} block>{vote.voter.nombres} {vote.voter.apellido_paterno} {vote.voter.apellido_materno}</Text>
+        <Text block>DNI: <span className="font-mono">{vote.voter.dni}</span></Text>
+        {vote.voter.direccion && <Text block>📍 {vote.voter.direccion}</Text>}
+        {vote.voter.telefono && <Text block>📞 {vote.voter.telefono}</Text>}
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+        <Text weight="semibold" className="text-gray-500 uppercase text-xs tracking-wider block mb-2">🗳️ CANDIDATO</Text>
+        <div className="flex items-center gap-3">
+          {vote.candidate.foto_url && (
+            <img
+              src={vote.candidate.foto_url}
+              alt=""
+              className="w-12 h-12 rounded-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          )}
+          <div>
+            <Text weight="semibold" size={400} block>{vote.candidate.nombre}</Text>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: vote.candidate.color_hex }} />
+              <Text>{vote.candidate.partido}</Text>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-4">
+        <Text weight="semibold" className="text-gray-500 uppercase text-xs tracking-wider block mb-2">📋 REGISTRADO POR</Text>
+        <Text block>{vote.registered_by_profile?.nombres} {vote.registered_by_profile?.apellido_paterno} <span className="text-gray-400">(Encuestador)</span></Text>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+        <Text weight="semibold" className="text-gray-500 uppercase text-xs tracking-wider block mb-2">🔑 CÓDIGO DE VERIFICACIÓN</Text>
+        <div className="flex items-center gap-2">
+          <Text weight="bold" size={500} block className="font-mono tracking-widest">{vote.verification_code}</Text>
+          <Button size="small" appearance="subtle" onClick={() => onCopyCode(vote.verification_code)}>📋 Copiar</Button>
+        </div>
+        <Text block className="mt-2">📅 {new Date(vote.created_at).toLocaleString('es-PE')}</Text>
+        {vote.location_lat != null && vote.location_lng != null && (
+          <Text block>
+            📌 {vote.location_lat.toFixed(4)}, {vote.location_lng.toFixed(4)}
+            {' '}
+            <a href={`https://www.google.com/maps?q=${vote.location_lat},${vote.location_lng}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm">
+              Ver en Google Maps →
+            </a>
+          </Text>
+        )}
+        {vote.location_address && <Text block>📍 {vote.location_address}</Text>}
+      </div>
+    </>
   )
 }

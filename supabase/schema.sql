@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS public.votes (
   location_lat DECIMAL(10,7),
   location_lng DECIMAL(10,7),
   location_address TEXT DEFAULT '',
-  verification_code VARCHAR(6) UNIQUE,
+  verification_code VARCHAR(8) UNIQUE,
   synced_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -130,15 +130,21 @@ CREATE POLICY "Encuestadores registran votos"
   );
 
 -- ============================================
--- FUNCIÓN: generar código de verificación
+-- FUNCIÓN: generar código de verificación (8 chars alfanuméricos)
 -- ============================================
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE OR REPLACE FUNCTION public.generate_verification_code()
-RETURNS VARCHAR(6) AS $$
+RETURNS VARCHAR(8) AS $$
 DECLARE
-  code VARCHAR(6);
+  chars TEXT := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  code VARCHAR(8) := '';
+  i INT;
 BEGIN
-  code := UPPER(SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 6));
+  FOR i IN 1..8 LOOP
+    code := code || SUBSTRING(chars FROM CAST(floor(random() * LENGTH(chars) + 1) AS INT) FOR 1);
+  END LOOP;
   RETURN code;
 END;
 $$ LANGUAGE plpgsql;
@@ -158,8 +164,8 @@ BEGIN
       RETURN NEW;
     EXCEPTION WHEN unique_violation THEN
       tries := tries + 1;
-      IF tries >= 5 THEN
-        NEW.verification_code := UPPER(SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 8));
+      IF tries >= 10 THEN
+        NEW.verification_code := UPPER(SUBSTRING(MD5(RANDOM()::TEXT || CLOCK_TIMESTAMP()::TEXT) FROM 1 FOR 8));
         RETURN NEW;
       END IF;
     END;
@@ -205,3 +211,25 @@ CREATE TABLE IF NOT EXISTS public.audit_log (
 );
 
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+
+-- ============================================
+-- CONFIGURACIÓN DEL SISTEMA
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS public.system_config (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  system_name TEXT NOT NULL DEFAULT 'Datam Cajamarca',
+  tagline TEXT NOT NULL DEFAULT 'Tu voto importa',
+  logo_url TEXT,
+  primary_color TEXT DEFAULT '#2563eb',
+  secondary_color TEXT DEFAULT '#7c3aed',
+  updated_by UUID REFERENCES public.profiles(id),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT single_row CHECK (id = 1)
+);
+
+ALTER TABLE public.system_config ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.system_config (id, system_name, tagline)
+VALUES (1, 'Datam Cajamarca', 'Tu voto importa')
+ON CONFLICT (id) DO NOTHING;

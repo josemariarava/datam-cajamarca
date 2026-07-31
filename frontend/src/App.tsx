@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { Button, Text, Spinner } from '@fluentui/react-components'
 import { Vote16Regular, Grid16Regular, Trophy16Regular, Search16Regular, Settings16Regular, AppFolder16Regular } from '@fluentui/react-icons'
@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import SplashScreen from './components/SplashScreen'
 
 const Login = lazy(() => import('./pages/Login'))
 const Register = lazy(() => import('./pages/Register'))
@@ -214,6 +215,12 @@ export default function App() {
   const { pathname } = useLocation()
   const noNavRoutes = ['/login', '/register', '/tv']
   const hideNavSpacing = noNavRoutes.includes(pathname)
+  const [splashDone, setSplashDone] = useState(() => !!sessionStorage.getItem('splash_done'))
+
+  const handleSplashFinish = useCallback(() => {
+    sessionStorage.setItem('splash_done', '1')
+    setSplashDone(true)
+  }, [])
 
   useEffect(() => {
     import('./pages/RegisterVote')
@@ -230,6 +237,7 @@ export default function App() {
             <AppRoutes />
           </main>
         </div>
+        {!splashDone && <SplashScreen onFinish={handleSplashFinish} />}
       </ToastProvider>
     </AuthProvider>
   )

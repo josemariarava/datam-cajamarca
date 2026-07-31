@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { candidatesApi, encuestadorApi, votesApi, adminApi } from '../services/api'
+import { candidatesApi, encuestadorApi, votesApi, adminApi, configApi } from '../services/api'
 
 export function useCandidates() {
   return useQuery({
@@ -41,10 +41,26 @@ export function useEncuestadores(page = 1) {
   })
 }
 
+export function useVotes(page = 1, search = '') {
+  return useQuery({
+    queryKey: ['admin', 'votes', page, search],
+    queryFn: () => adminApi.getVotes(page, search),
+    staleTime: 30 * 1000,
+  })
+}
+
 export function useMapData(page = 1) {
   return useQuery({
     queryKey: ['admin', 'map-data', page],
     queryFn: () => adminApi.getMapData(page),
     staleTime: 60 * 1000,
+  })
+}
+
+export function useConfigPublic() {
+  return useQuery({
+    queryKey: ['config'],
+    queryFn: configApi.getPublic,
+    staleTime: 5 * 60 * 1000,
   })
 }

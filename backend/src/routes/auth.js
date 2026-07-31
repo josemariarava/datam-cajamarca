@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../config/supabase.js'
 import { consultarDNI } from '../services/dni.js'
 import { requireAuth } from '../middleware/auth.js'
 import { authLimiter } from '../middleware/rateLimit.js'
+import { sanitizeError } from '../utils/errors.js'
 
 const router = Router()
 
@@ -27,7 +28,7 @@ router.post('/register', authLimiter, async (req, res) => {
       email_confirm: true,
     })
 
-    if (authError) return res.status(400).json({ error: authError.message })
+    if (authError) return res.status(400).json({ error: sanitizeError(authError) })
 
     const { error: profileError } = await supabaseAdmin.from('profiles').insert({
       id: authData.user.id,
@@ -42,12 +43,12 @@ router.post('/register', authLimiter, async (req, res) => {
 
     if (profileError) {
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-      return res.status(400).json({ error: profileError.message })
+      return res.status(400).json({ error: sanitizeError(profileError) })
     }
 
     res.status(201).json({ message: 'Encuestador registrado exitosamente' })
   } catch (err) {
-    res.status(400).json({ error: err.message })
+    res.status(400).json({ error: sanitizeError(err) })
   }
 })
 
@@ -58,7 +59,7 @@ router.post('/consultar-dni', authLimiter, async (req, res) => {
     const data = await consultarDNI(dni)
     res.json(data)
   } catch (err) {
-    res.status(400).json({ error: err.message })
+    res.status(400).json({ error: sanitizeError(err) })
   }
 })
 
@@ -69,7 +70,7 @@ router.get('/profile', requireAuth, async (req, res) => {
     .eq('id', req.user.id)
     .single()
 
-  if (error) return res.status(400).json({ error: error.message })
+  if (error) return res.status(400).json({ error: sanitizeError(error) })
   res.json(data)
 })
 
